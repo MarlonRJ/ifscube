@@ -1,3 +1,4 @@
+
 import warnings
 from typing import Union, Iterable, Callable
 
@@ -714,7 +715,8 @@ class LineFit:
             fig.clf()
             spectrum_ax, residuals_ax = fig.subplots(nrows=2, ncols=1, sharex='all',
                                                      gridspec_kw={'height_ratios': [4, 1], 'hspace': 0.0})
-
+        residuals_ax.set_xlim([6430,6660])
+        #residuals_ax.set_xlim([4650,5000])
         residuals_ax.plot(wavelength, (observed - model_lines - stellar - pseudo_continuum) / err)
         residuals_ax.set_xlabel('Wavelength')
         residuals_ax.set_ylabel('Residuals / sigma')
@@ -727,6 +729,11 @@ class LineFit:
             high += stellar + pseudo_continuum
             spectrum_ax.fill_between(wavelength, low, high, color='C2', alpha=0.5)
 
+        spectrum_ax.set_xlim([6430,6660])
+        #spectrum_ax.set_xlim([6150,7000])
+        #spectrum_ax.set_xlim([4650,5000])
+        upper_limit = observed[(wavelength >= 6430) & (wavelength <= 6660)].max()
+        spectrum_ax.set_ylim(observed.min()*0.8,upper_limit*1.1)
         spectrum_ax.plot(wavelength, observed, color='C0')
         spectrum_ax.plot(wavelength, model_lines + stellar + pseudo_continuum, color='C2')
 
