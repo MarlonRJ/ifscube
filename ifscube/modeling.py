@@ -711,48 +711,86 @@ class LineFit:
         else:
             fig = figure
 
+        fig.set_size_inches(20.5,10.5,forward=True)
+        fig.set_dpi(100)
+
         if (spectrum_ax is None) and (residuals_ax is None):
             fig.clf()
-            spectrum_ax, residuals_ax = fig.subplots(nrows=2, ncols=1, sharex='all',
-                                                     gridspec_kw={'height_ratios': [4, 1], 'hspace': 0.0})
-        residuals_ax.set_xlim([6430,6660])
-        #residuals_ax.set_xlim([4650,5000])
-        residuals_ax.plot(wavelength, (observed - model_lines - stellar - pseudo_continuum) / err)
-        residuals_ax.set_xlabel('Wavelength')
-        residuals_ax.set_ylabel('Residuals / sigma')
-        residuals_ax.grid()
+            ((spectrum_ax1,spectrum_ax2), (residuals_ax1, residuals_ax2)) = fig.subplots(nrows=2, ncols=2, sharex=False,sharey=False,
+                    gridspec_kw={'height_ratios': [4,1],'width_ratios': [1, 4],'wspace': 0.0, 'hspace': 0.0})
+       
+        #l_ha = 6520
+        #lf_ha = 6600
+        l_ha =6450
+        lf_ha = 6680
+        #l_hb = 4840
+        #lf_hb =4880
+        l_hb =4750
+        lf_hb =5100
+
+        residuals_ax2.set_xlim([l_ha,lf_ha])
+        residuals_ax1.set_xlim([l_hb,lf_hb])
+        arr=((observed - model_lines - stellar - pseudo_continuum) / err)
+        upper_limit_r2 = np.nanmax(arr[(wavelength >= l_ha) & (wavelength <= lf_ha)])
+        upper_limit_r1 = np.nanmax(arr[(wavelength >= l_hb) & (wavelength <= lf_hb)])
+        upper_limit_r =np.max([upper_limit_r1,upper_limit_r2])
+        lower_limit_r2 = np.nanmin(arr[(wavelength >= l_ha) & (wavelength <= lf_ha)])
+        lower_limit_r1 = np.nanmin(arr[(wavelength >= l_hb) & (wavelength <= lf_hb)])
+        lower_limit_r =np.min([lower_limit_r1,lower_limit_r2])
+        residuals_ax1.set_ylim(lower_limit_r1*1.2,upper_limit_r1*1.2)
+        residuals_ax2.set_ylim(lower_limit_r2*1.2,upper_limit_r2*1.2)
+        residuals_ax1.plot(wavelength, (observed - model_lines - stellar - pseudo_continuum) / err)
+        residuals_ax1.set_xlabel('Wavelength')
+        residuals_ax1.set_ylabel('Residuals / sigma')
+        residuals_ax1.grid()
+        residuals_ax1.sharex(spectrum_ax1)
+        residuals_ax2.plot(wavelength, (observed - model_lines - stellar - pseudo_continuum) / err)
+        residuals_ax2.grid()
+        residuals_ax2.sharex(spectrum_ax2)
+        #residuals_ax1.sharey(residuals_ax2)
 
         if self.uncertainties is not None:
             low = self.function(wavelength, self.feature_wavelengths, self.solution - self.uncertainties)
             high = self.function(wavelength, self.feature_wavelengths, self.solution + self.uncertainties)
             low += stellar + pseudo_continuum
             high += stellar + pseudo_continuum
-            spectrum_ax.fill_between(wavelength, low, high, color='C2', alpha=0.5)
+            spectrum_ax1.fill_between(wavelength, low, high, color='C2', alpha=0.5)
+            spectrum_ax2.fill_between(wavelength, low, high, color='C2', alpha=0.5) 
 
-        spectrum_ax.set_xlim([6430,6660])
+        spectrum_ax2.set_xlim([l_ha,lf_ha])
         #spectrum_ax.set_xlim([6150,7000])
-        #spectrum_ax.set_xlim([4650,5000])
-        upper_limit = observed[(wavelength >= 6430) & (wavelength <= 6660)].max()
-        spectrum_ax.set_ylim(observed.min()*0.8,upper_limit*1.1)
-        spectrum_ax.plot(wavelength, observed, color='C0')
-        spectrum_ax.plot(wavelength, model_lines + stellar + pseudo_continuum, color='C2')
+        spectrum_ax1.set_xlim([l_hb,lf_hb])
+        upper_limit2 = observed[(wavelength >= l_ha) & (wavelength <= lf_ha)].max()
+        upper_limit1 = observed[(wavelength >= l_hb) & (wavelength <= lf_hb)].max()
+        lower_limit2 = observed[(wavelength >= l_ha) & (wavelength <= lf_ha)].min()
+        lower_limit1 = observed[(wavelength >= l_hb) & (wavelength <= lf_hb)].min() 
+        spectrum_ax1.set_ylim(lower_limit1*0.6,upper_limit1*1.3)
+        spectrum_ax2.set_ylim(lower_limit2*0.6,upper_limit2*1.1)
+        spectrum_ax1.plot(wavelength, observed, color='C0')
+        spectrum_ax1.plot(wavelength, model_lines + stellar + pseudo_continuum, color='C2')
+        spectrum_ax2.plot(wavelength, observed, color='C0')
+        spectrum_ax2.plot(wavelength, model_lines + stellar + pseudo_continuum, color='C2')
+        #spectrum_ax2.sharey(spectrum_ax1)
 
         if np.any(pseudo_continuum):
-            spectrum_ax.plot(wavelength, pseudo_continuum + stellar)
+            spectrum_ax1.plot(wavelength, pseudo_continuum + stellar)
+            spectrum_ax2.plot(wavelength, pseudo_continuum + stellar)
         if np.any(stellar):
-            spectrum_ax.plot(wavelength, stellar)
+            spectrum_ax1.plot(wavelength, stellar)
+            spectrum_ax2.plot(wavelength, stellar) 
 
         ppf = self.parameters_per_feature
         for i in range(0, len(self.parameter_names), ppf):
             feature_wl = self.feature_wavelengths[int(i / ppf)]
             parameters = self.solution[i:i + ppf]
             line = self.function(wavelength, feature_wl, parameters)
-            spectrum_ax.plot(wavelength, pseudo_continuum + stellar + line, 'k--')
+            spectrum_ax1.plot(wavelength, pseudo_continuum + stellar + line, 'k--')
+            spectrum_ax2.plot(wavelength, pseudo_continuum + stellar + line, 'k--')
+        spectrum_ax1.set_ylabel('Spectral flux density')
+        spectrum_ax1.minorticks_on()
 
-        spectrum_ax.set_ylabel('Spectral flux density')
-        spectrum_ax.minorticks_on()
-
-        spectrum_ax.grid()
+        spectrum_ax1.grid()
+        spectrum_ax2.grid()
 
         if verbose:
             print(self.print_parameters('solution'))
