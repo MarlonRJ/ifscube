@@ -2,7 +2,7 @@
 import copy
 import glob
 import importlib.resources
-
+from urllib import request
 import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
@@ -14,7 +14,7 @@ from scipy.ndimage import gaussian_filter
 
 from . import spectools
 from .onedspec import Spectrum
-
+import os.path
 
 def spectrum_kinematics(spectrum, fitting_window=None, **kwargs):
     """
@@ -245,13 +245,16 @@ def cube_kinematics(cube, fitting_window, individual_spec=None, verbose=False, *
 
 class Fit(object):
 
-    def __init__(self, fitting_window, cushion=100.0):
+    def __init__(self, fitting_window,sps_type ='emiles', cushion=100.0):
 
         self.fitting_window = fitting_window
+        self.sps_type = sps_type
+
         self.mask = None
 
         self.base = np.array([])
         self.base_wavelength = np.array([])
+        self.fwhm_i = np.array([])
         self.obs_wavelength = np.array([])
         self.obs_flux = np.array([])
         self.noise = np.array([])
@@ -262,31 +265,34 @@ class Fit(object):
         self.base_delta = 1.0
         self.normalization_factor = 1.0
 
-        self.load_miles_models()
+        self.load_models()
 
         self._cut_base(self.fitting_window[0], self.fitting_window[1], cushion=cushion)
 
-    def load_miles_models(self):
+    def load_models(self):
+        basename = f"spectra_{self.sps_type}_9.0.npz"
+        path = str(importlib.resources.files('ppxf') / 'sps_models'/ basename)
+        if not os.path.isfile(path):
+            url = "https://raw.githubusercontent.com/micappe/ppxf_data/main/" + basename
+            request.urlretrieve(url, path)
 
-        path = str(importlib.resources.files('ppxf') / 'miles_models/*fits')
-        base_files = glob.glob(path)
-        base_files.sort()
+        base_data = np.load(path)
+        
+        spectrum = base_data["templates"]
 
-        w = wcs.WCS(base_files[0], naxis=1)
-        spectrum = fits.getdata(base_files[0])
-        wavelength = w.wcs_pix2world(np.arange(spectrum.size), 0)[0]
+        wavelength = base_data["lam"]
+        
+        fwhm_g = base_data["fwhm"]
 
-        base = spectrum.reshape((1, spectrum.size))
+        n_wl, n_metal, n_ages = base_data["templates"].shape
+        base =np.transpose(spectrum.reshape(n_wl,-1))
 
-        for file in base_files:
-            base = np.row_stack([base, fits.getdata(file)])
 
         self.base = base
         self.base_wavelength = wavelength
+        self.fwhm_i = fwhm_g
 
-        d = np.diff(self.base_wavelength)
-        if np.std(d) > (1.e-6 * d.mean()):
-            raise UserWarning('Base is not evenly sampled in wavelength.')
+        
 
         self.base_delta = np.mean(np.diff(self.base_wavelength))
 
@@ -300,10 +306,11 @@ class Fit(object):
                 'The interval defined by fitting_window lies outside the range covered by base_wl. Please review your'
                 'base and/or fitting window.')
 
-        self.base = self.base[:, base_cut]
+        self.base = self.base[:,base_cut]
         self.base_wavelength = self.base_wavelength[base_cut]
+        self.fwhm_i = self.fwhm_i[base_cut]
 
-    def fit(self, wavelength, data, mask=None, start=None, initial_velocity=0.0, initial_sigma=150.0, fwhm_gal=2,
+    def fit(self, wavelength, data, mask=None, start=None, initial_velocity=0.0, initial_sigma=150.0, fwhm_gal=2.62,
             fwhm_model=1.8,
             noise=0.05, plot_fit=False, quiet=False, deg=4, moments=4, **kwargs):
         """
@@ -380,13 +387,13 @@ class Fit(object):
         ssp_new, log_lam2, velscale = ppxf_util.log_rebin(lam_range2, ssp, velscale=velscale)
         templates = np.empty((ssp_new.size, len(self.base)))
 
-        fwhm_dif = np.sqrt(fwhm_gal ** 2 - fwhm_model ** 2)
-        # Sigma difference in pixels
-        sigma = fwhm_dif / 2.355 / self.base_delta
+        fwhm_dif = np.sqrt(fwhm_gal ** 2 - self.fwhm_i ** 2)
+        
+        sigma = fwhm_dif / (2*np.sqrt(np.log(4)))
 
         for j in range(len(self.base)):
             ssp = self.base[j]
-            ssp = gaussian_filter(ssp, sigma)
+            ssp = ppxf_util.varsmooth(self.base_wavelength,ssp,sigma)
             ssp_new, log_lam2, velscale = ppxf_util.log_rebin(lam_range2, ssp, velscale=velscale)
             # Normalizes templates
             templates[:, j] = ssp_new / np.median(ssp_new)
